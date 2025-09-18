@@ -1,0 +1,30 @@
+/* Styles for AutoSubtitles module */
+
+/* Ensure CC button is visible when subtitles are available */
+.subtitle-controls {
+  display: inline-flex !important;
+}
+
+/* Style for subtitle button states */
+.subtitle-button.subtitle-disabled {
+  opacity: 0.6;
+}
+
+.subtitle-button.subtitle-enabled {
+  opacity: 1;
+  color: var(--theme-main-color, #ee4d2e);
+}
+
+/* Enhance video controls visibility */
+.video-controls .subtitle-controls {
+  margin-left: 5px;
+}
+
+/* Subtitle track styling */
+video::cue {
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  font-size: 16px;
+  font-family: Arial, sans-serif;
+  text-shadow: 1px 1px 1px rgba(0, 0, 0, 0.8);
+}

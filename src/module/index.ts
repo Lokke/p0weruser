@@ -15,6 +15,7 @@ import StyleCustomization from "./StyleCustomization/StyleCustomization";
 import ViewedPostsMarker from "./ViewedPostsMarker/ViewedPostsMarker";
 import WidescreenMode from "./WidescreenMode/WidescreenMode";
 import DownloadButton from "./DownloadButton/DownloadButton";
+import AutoSubtitles from "./AutoSubtitles/AutoSubtitles";
 
 export const modules: Record<PoweruserModuleId, () => PoweruserModule> = {
     'StyleCustomization': () => new StyleCustomization(),
@@ -33,4 +34,5 @@ export const modules: Record<PoweruserModuleId, () => PoweruserModule> = {
     'NotificationCenter': () => new NotificationCenter(),
     'WidescreenMode': () => new WidescreenMode(),
     "DownloadButton": () => new DownloadButton(),
+    'AutoSubtitles': () => new AutoSubtitles(),
 };
