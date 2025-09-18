@@ -86,66 +86,124 @@ export default class AutoSubtitles implements PoweruserModule {
     private initAutoSubtitles() {
         const _this = this;
 
-        // Erweitere die Stream Item View um automatische Untertitel-Erkennung
-        p.View.Stream.Item = p.View.Stream.Item.extend({
-            show: async function (
-                rowIndex: any,
-                itemData: StreamItem,
-                defaultHeight: any,
-                jumpToComment: any
-            ) {
-                // Zuerst prüfen ob Untertitel verfügbar sind
-                await _this.enhanceItemWithSubtitles(itemData);
-                
-                // Dann das normale Verhalten ausführen
-                this.parent(rowIndex, itemData, defaultHeight, jumpToComment);
-                
-                // Nach dem Rendern: CC-Button aktivieren falls Untertitel vorhanden
-                _this.activateSubtitleControls();
+        // Nutze das itemOpened Event anstatt die View zu überschreiben
+        window.addEventListener('itemOpened', async (ev: Event & any) => {
+            const itemData = ev.data.itemData;
+            
+            // Zuerst prüfen ob Untertitel verfügbar sind
+            await _this.enhanceItemWithSubtitles(itemData);
+            
+            // Wenn Untertitel hinzugefügt wurden, das Video neu rendern
+            if ((itemData as any).subtitles && (itemData as any).subtitles.length > 0) {
+                // Kurz warten bis das DOM bereit ist
+                setTimeout(() => {
+                    _this.activateSubtitleControls();
+                    _this.updateVideoWithSubtitles(itemData, ev.data.$container);
+                }, 100);
             }
         });
+    }
 
-        // Fix für Audio-/Video-Controls
-        Utils.addVideoConstants();
+    /**
+     * Aktualisiert das Video-Element mit den neuen Untertiteln
+     */
+    private updateVideoWithSubtitles(itemData: StreamItem, $container: any) {
+        const videoElement = $container.find('.item-image-actual')[0] as HTMLVideoElement;
+        
+        if (!videoElement || !videoElement.tagName || videoElement.tagName !== 'VIDEO') {
+            return;
+        }
+
+        const subtitles = (itemData as any).subtitles;
+        if (!subtitles || subtitles.length === 0) {
+            return;
+        }
+
+        // Entferne bereits vorhandene Track-Elemente
+        const existingTracks = videoElement.querySelectorAll('track');
+        existingTracks.forEach(track => track.remove());
+
+        // Füge neue Track-Elemente hinzu
+        subtitles.forEach((subtitle: any) => {
+            const track = document.createElement('track');
+            track.kind = 'subtitles';
+            track.src = subtitle.path;
+            track.label = subtitle.label;
+            track.srclang = subtitle.language;
+            
+            if (subtitle.isDefault || subtitles.length === 1) {
+                track.setAttribute('data-is-default', '');
+            }
+            
+            videoElement.appendChild(track);
+        });
+
+        console.debug('AutoSubtitles: Updated video with subtitle tracks:', subtitles);
     }
 
     /**
      * Aktiviert die Untertitel-Controls nach dem Rendern
      */
     private activateSubtitleControls() {
-        const subtitleCheckbox = document.getElementById('video-controls-enable-subtitles-checkbox') as HTMLInputElement;
-        const videoElement = document.querySelector('.item-image-actual') as HTMLVideoElement;
+        // Mehrere Versuche, da das DOM noch nicht bereit sein könnte
+        let attempts = 0;
+        const maxAttempts = 10;
         
-        if (!subtitleCheckbox || !videoElement) {
-            return;
-        }
-
-        // Event-Listener für CC-Button
-        subtitleCheckbox.addEventListener('change', () => {
-            const tracks = videoElement.querySelectorAll('track');
+        const tryActivate = () => {
+            const subtitleCheckbox = document.getElementById('video-controls-enable-subtitles-checkbox') as HTMLInputElement;
+            const videoElement = document.querySelector('.item-image-actual') as HTMLVideoElement;
             
-            tracks.forEach(track => {
-                const htmlTrack = track as HTMLTrackElement;
-                if (htmlTrack.track) {
-                    htmlTrack.track.mode = subtitleCheckbox.checked ? 'showing' : 'hidden';
+            if (!subtitleCheckbox || !videoElement || attempts >= maxAttempts) {
+                if (attempts >= maxAttempts) {
+                    console.debug('AutoSubtitles: Could not find subtitle controls after', maxAttempts, 'attempts');
                 }
-            });
-            
-            console.debug('AutoSubtitles: Subtitles', subtitleCheckbox.checked ? 'enabled' : 'disabled');
-        });
+                return;
+            }
 
-        // Automatisch Untertitel einschalten wenn verfügbar und Standard
-        const defaultTrack = videoElement.querySelector('track[data-is-default]') as HTMLTrackElement;
-        if (defaultTrack && defaultTrack.track) {
-            // Kurz warten bis das Video geladen ist
-            setTimeout(() => {
-                if (defaultTrack.track && defaultTrack.track.mode !== 'showing') {
-                    subtitleCheckbox.checked = true;
-                    defaultTrack.track.mode = 'showing';
-                    console.debug('AutoSubtitles: Auto-enabled default subtitles');
-                }
-            }, 500);
-        }
+            // Event-Listener für CC-Button (nur einmal hinzufügen)
+            if (!subtitleCheckbox.hasAttribute('data-autosubtitles-attached')) {
+                subtitleCheckbox.setAttribute('data-autosubtitles-attached', 'true');
+                
+                subtitleCheckbox.addEventListener('change', () => {
+                    const tracks = videoElement.querySelectorAll('track');
+                    
+                    tracks.forEach(track => {
+                        const htmlTrack = track as HTMLTrackElement;
+                        if (htmlTrack.track) {
+                            htmlTrack.track.mode = subtitleCheckbox.checked ? 'showing' : 'hidden';
+                        }
+                    });
+                    
+                    console.debug('AutoSubtitles: Subtitles', subtitleCheckbox.checked ? 'enabled' : 'disabled');
+                });
+            }
+
+            // Automatisch Untertitel einschalten wenn verfügbar und Standard
+            const defaultTrack = videoElement.querySelector('track[data-is-default]') as HTMLTrackElement;
+            if (defaultTrack && defaultTrack.track) {
+                // Kurz warten bis das Video geladen ist
+                setTimeout(() => {
+                    if (defaultTrack.track && defaultTrack.track.mode !== 'showing') {
+                        subtitleCheckbox.checked = true;
+                        defaultTrack.track.mode = 'showing';
+                        console.debug('AutoSubtitles: Auto-enabled default subtitles');
+                    }
+                }, 500);
+            }
+        };
+        
+        // Versuche es sofort und dann mit Verzögerungen
+        tryActivate();
+        attempts++;
+        
+        const retryInterval = setInterval(() => {
+            attempts++;
+            tryActivate();
+            
+            if (attempts >= maxAttempts || document.getElementById('video-controls-enable-subtitles-checkbox')) {
+                clearInterval(retryInterval);
+            }
+        }, 100);
     }
 
     getSettings(): ModuleSetting[] {
